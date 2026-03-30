@@ -26,5 +26,10 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.CreatedAt)
             .IsRequired();
+
+        builder.Property(x => x.FailedLoginAttempts)
+    .IsRequired();
+
+        builder.Property(x => x.LockoutEndUtc);
     }
 }

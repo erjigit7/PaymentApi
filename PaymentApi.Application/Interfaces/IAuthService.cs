@@ -1,8 +1,9 @@
+using PaymentApi.Application;
+
 namespace PaymentApi.Application.Interfaces;
 
 public interface IAuthService
 {
-    Task<string?> LoginAsync(string login, string password);
-
-    Task LogoutAsync(string token);
+    Task<LoginResult> LoginAsync(string login, string password);
+    Task LogoutByJwtIdAsync(string jwtId);
 }

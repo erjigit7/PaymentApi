@@ -1,6 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PaymentApi.Api.Common;
 using PaymentApi.Application.Interfaces;
 
 namespace PaymentApi.Api.Controllers;
@@ -18,13 +19,18 @@ public sealed class PaymentController : ControllerBase
     }
 
     [HttpPost]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> MakePayment()
     {
-        var userIdValue = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        var userIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userIdValue is null || !Guid.TryParse(userIdValue, out var userId))
-            return Unauthorized();
+        {
+            return Unauthorized(new ApiError("invalid_token", "User id claim is missing or invalid."));
+        }
 
-        var username = User.FindFirst(JwtRegisteredClaimNames.UniqueName)?.Value ?? "unknown";
+        var username = User.FindFirst(ClaimTypes.Name)?.Value ?? "unknown";
 
         var result = await _paymentService.MakePaymentAsync(userId).ConfigureAwait(false);
 
@@ -32,10 +38,10 @@ public sealed class PaymentController : ControllerBase
         {
             return BadRequest(new
             {
+                error = new ApiError("payment_failed", result.FailureReason ?? "Payment failed."),
                 username,
                 chargedAmount = result.ChargedAmount,
-                remainingBalance = result.RemainingBalance,
-                message = result.FailureReason
+                remainingBalance = result.RemainingBalance
             });
         }
 
@@ -43,7 +49,8 @@ public sealed class PaymentController : ControllerBase
         {
             username,
             chargedAmount = result.ChargedAmount,
-            remainingBalance = result.RemainingBalance
+            remainingBalance = result.RemainingBalance,
+            message = "Payment completed successfully."
         });
     }
 }

@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -11,15 +12,20 @@ using PaymentApi.Application;
 using PaymentApi.Application.Interfaces;
 using PaymentApi.Infrastructure;
 using PaymentApi.Infrastructure.Persistence;
+using PaymentApi.Infrastructure.Repositories;
 using PaymentApi.Infrastructure.Security;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
+builder.Services.AddScoped<ITokenHasher, TokenHasher>();
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("Jwt configuration section is missing.");
@@ -32,41 +38,67 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        // Variant B: don't remap "sub" -> ClaimTypes.NameIdentifier, keep raw JWT claim names.
-        options.MapInboundClaims = false;
-
-        options.IncludeErrorDetails = true;
-
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-
             ValidIssuer = jwtOptions.Issuer,
             ValidAudience = jwtOptions.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
-            ClockSkew = TimeSpan.Zero,
-
-            // Optional: if you use User.Identity.Name anywhere, it will read from "unique_name"
-            NameClaimType = JwtRegisteredClaimNames.UniqueName,
-            // RoleClaimType = "role" // set if you later add roles
+            ClockSkew = TimeSpan.Zero
         };
 
         options.Events = new JwtBearerEvents
         {
-            OnAuthenticationFailed = ctx =>
+            OnTokenValidated = async context =>
             {
-                var logger = ctx.HttpContext.RequestServices
+                var logger = context.HttpContext.RequestServices
                     .GetRequiredService<ILoggerFactory>()
-                    .CreateLogger("JwtBearer");
-                logger.LogError(ctx.Exception, "JWT authentication failed.");
-                return Task.CompletedTask;
+                    .CreateLogger("JwtValidation");
+
+                var jti = context.Principal?
+                    .FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+
+                logger.LogInformation("Validating token with jti: {Jti}", jti);
+
+                if (string.IsNullOrWhiteSpace(jti))
+                {
+                    logger.LogWarning("Token has no jti");
+                    context.Fail("Token has no jti.");
+                    return;
+                }
+
+                var dbContext = context.HttpContext.RequestServices
+                    .GetRequiredService<ApplicationDbContext>();
+
+                var session = await dbContext.UserSessions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.JwtId == jti);
+
+                if (session is null)
+                {
+                    logger.LogWarning("Session not found for jti: {Jti}", jti);
+                    context.Fail("Session not found.");
+                    return;
+                }
+
+                if (session.RevokedAt.HasValue)
+                {
+                    logger.LogWarning("Token revoked for jti: {Jti}", jti);
+                    context.Fail("Token revoked.");
+                    return;
+                }
+
+                if (session.ExpiresAt <= DateTime.UtcNow)
+                {
+                    logger.LogWarning("Token expired in DB for jti: {Jti}", jti);
+                    context.Fail("Token expired.");
+                }
             }
         };
     });
-
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

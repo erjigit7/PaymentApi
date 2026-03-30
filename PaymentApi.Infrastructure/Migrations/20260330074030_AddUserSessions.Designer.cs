@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PaymentApi.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using PaymentApi.Infrastructure.Persistence;
 namespace PaymentApi.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260330074030_AddUserSessions")]
+    partial class AddUserSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -43,6 +46,35 @@ namespace PaymentApi.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Payments", (string)null);
+                });
+
+            modelBuilder.Entity("PaymentApi.Domain.Entities.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Login")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Login")
+                        .IsUnique();
+
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("PaymentApi.Domain.Entities.UserSession", b =>
@@ -83,44 +115,9 @@ namespace PaymentApi.Infrastructure.Migrations
                     b.ToTable("UserSessions", (string)null);
                 });
 
-            modelBuilder.Entity("User", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Balance")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("FailedLoginAttempts")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("LockoutEndUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Login")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Login")
-                        .IsUnique();
-
-                    b.ToTable("Users", (string)null);
-                });
-
             modelBuilder.Entity("PaymentApi.Domain.Entities.Payment", b =>
                 {
-                    b.HasOne("User", null)
+                    b.HasOne("PaymentApi.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -129,7 +126,7 @@ namespace PaymentApi.Infrastructure.Migrations
 
             modelBuilder.Entity("PaymentApi.Domain.Entities.UserSession", b =>
                 {
-                    b.HasOne("User", null)
+                    b.HasOne("PaymentApi.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
