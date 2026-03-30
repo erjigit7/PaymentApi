@@ -146,7 +146,7 @@ app.MapGet("/debug/jwt", (IOptions<JwtOptions> opts) => new
 app.MapGet("/debug/claims", [Microsoft.AspNetCore.Authorization.Authorize] (ClaimsPrincipal user) =>
     user.Claims.Select(c => new { c.Type, c.Value }));
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UsePaymentApiMiddleware();
